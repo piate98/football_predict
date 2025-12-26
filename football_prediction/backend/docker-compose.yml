@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: .
+    container_name: football_backend
+    environment:
+      PORT: "8000"
+      FOOTBALL_DATA_TOKEN: "${FOOTBALL_DATA_TOKEN}"
+      DB_PATH: "/data/football.db"
+    volumes:
+      - football_db:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ../frontend
+    container_name: football_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  football_db:
