@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getLeagues, getFixtures } from "./api";
+import { getLeagues, getFixtures } from "./api.js";
 
 function isoDate(d) {
   const y = d.getFullYear();
@@ -107,11 +107,9 @@ export default function App() {
   const [leagues, setLeagues] = useState([]);
   const [competition, setCompetition] = useState("BL1");
 
-  // applied (used for fetch)
   const [dateFrom, setDateFrom] = useState(isoDate(new Date()));
   const [dateTo, setDateTo] = useState(() => addDaysIso(isoDate(new Date()), 14));
 
-  // draft (editable)
   const [draftFrom, setDraftFrom] = useState(isoDate(new Date()));
   const [draftTo, setDraftTo] = useState(() => addDaysIso(isoDate(new Date()), 14));
 
@@ -122,14 +120,14 @@ export default function App() {
   const [sortKey, setSortKey] = useState("confidence");
   const [sortDir, setSortDir] = useState("desc");
 
-  // leagues
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const data = await getLeagues();
+        const data = await getLeagues(); // { leagues: [...] }
         const list = (data.leagues || []).filter((x) => x && x.code);
         if (!alive) return;
+
         setLeagues(list);
 
         const hasBL1 = list.some((l) => l.code === "BL1");
@@ -165,13 +163,11 @@ export default function App() {
     }
   }
 
-  // initial load
   useEffect(() => {
     loadFixtures({ competition, dateFrom, dateTo });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // if league changes, fetch again (using applied dates)
   useEffect(() => {
     loadFixtures({ competition, dateFrom, dateTo });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -329,7 +325,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Mobile cards */}
       <div className="cardsOnly">
         {sorted.map((f) => (
           <FixtureCardSimple key={f.match_id} f={f} />
@@ -337,7 +332,6 @@ export default function App() {
         {!loading && sorted.length === 0 && <div className="emptyCard">No fixtures found for this range.</div>}
       </div>
 
-      {/* Desktop table */}
       <div className="tableCard tableOnly">
         <div className="tableWrap">
           <table>
@@ -372,8 +366,12 @@ export default function App() {
                     <td className="mono">
                       {pct(f.elo_p_home)} / {pct(f.elo_p_draw)} / {pct(f.elo_p_away)}
                     </td>
-                    <td><Meter label="" v={f.p_over25} /></td>
-                    <td><Meter label="" v={f.p_btts} /></td>
+                    <td>
+                      <Meter label="" v={f.p_over25} />
+                    </td>
+                    <td>
+                      <Meter label="" v={f.p_btts} />
+                    </td>
                     <td>
                       <ScorePills scores={f.top_scores} />
                       <div className="small">Captured: {pct(f.mass_captured)}</div>
@@ -398,7 +396,6 @@ export default function App() {
     </div>
   );
 }
-
 
 
 
