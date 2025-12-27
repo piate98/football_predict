@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 from typing import Optional, List, Dict, Any
+import os
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
@@ -21,7 +22,7 @@ from .poisson_model import (
     top_scorelines,
 )
 
-app = FastAPI(title="Football Prediction API", version="0.5.1")
+app = FastAPI(title="Football Prediction API", version="0.5.2")
 
 
 @app.on_event("startup")
@@ -46,6 +47,27 @@ def _is_rate_limit_error(e: Exception) -> bool:
     s = str(e)
     # our client/train code raises RuntimeError("429 from provider. Body: ...")
     return s.startswith("429") or '"errorCode":429' in s or "errorCode\":429" in s
+
+
+def _parse_league_list(raw: str) -> List[str]:
+    # "PL,BL1,SA,PD,FL1" -> ["PL","BL1","SA","PD","FL1"]
+    items = []
+    for x in (raw or "").split(","):
+        x = x.strip()
+        if x:
+            items.append(x)
+    return items
+
+
+def _default_train_leagues() -> List[str]:
+    # You can override via env var on Render:
+    # TRAIN_LEAGUES="PL,BL1,SA,PD,FL1"
+    raw = os.getenv("TRAIN_LEAGUES", "").strip()
+    if raw:
+        return _parse_league_list(raw)
+
+    # sensible default set (top leagues)
+    return ["PL", "BL1", "SA", "PD", "FL1"]
 
 
 # ----------------------------
@@ -90,9 +112,21 @@ class TrainRequest(BaseModel):
     days_back: int = 365
 
 
+class TrainAllRequest(BaseModel):
+    # optional override; if not provided -> env TRAIN_LEAGUES or defaults
+    competitions: Optional[List[str]] = None
+    days_back: int = 365
+
+
 # ----------------------------
 # Routes
 # ----------------------------
+@app.get("/health")
+def health():
+    # Simple health endpoint for Render + debugging
+    return {"ok": True, "service": "football_prediction_api"}
+
+
 @app.get("/api/debug_token")
 def debug_token():
     t = settings.football_data_token
@@ -175,6 +209,9 @@ async def fixtures(
     matches = [m for m in matches if m.get("status") in UPCOMING]
 
     elo_cfg = EloConfig()
+    # NOTE: if you previously got a "unexpected keyword smoothing",
+    # it means your PoissonConfig did not have smoothing in that file.
+    # Ensure poisson_model.py includes smoothing in the dataclass.
     pois_cfg = PoissonConfig(window_matches=20, max_goals=6, smoothing=0.15)
 
     out: List[FixtureOut] = []
@@ -278,7 +315,6 @@ async def train(req: TrainRequest) -> Dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Elo rebuild failed: {e}")
 
-    # also show DB coverage so you know if Poisson/Elo has enough history
     stats = db_stats(req.competition)
 
     return {
@@ -291,6 +327,82 @@ async def train(req: TrainRequest) -> Dict[str, Any]:
     }
 
 
+@app.post("/api/train_all")
+async def train_all(req: TrainAllRequest) -> Dict[str, Any]:
+    """
+    Multi-league training for cron.
 
+    - Tries to fetch finished matches for each competition
+    - Rebuilds Elo for each competition
+    - Continues even if one league fails
+    - If rate-limited (429) on a league: skips fetch, still rebuilds from DB
+    """
+    competitions = req.competitions if (req.competitions and len(req.competitions)) else _default_train_leagues()
+
+    results: List[Dict[str, Any]] = []
+    totals = {
+        "leagues_requested": len(competitions),
+        "matches_upserted_total": 0,
+        "rate_limited_count": 0,
+        "failed_count": 0,
+    }
+
+    for comp in competitions:
+        comp = (comp or "").strip()
+        if not comp:
+            continue
+
+        inserted = 0
+        fetch_skipped_due_to_rate_limit = False
+        fetch_error: Optional[str] = None
+        rebuild_error: Optional[str] = None
+        n_teams: Optional[int] = None
+        stats: Optional[Dict[str, Any]] = None
+
+        # 1) fetch + upsert
+        try:
+            inserted = await upsert_matches_from_api(comp, days_back=req.days_back)
+        except RuntimeError as e:
+            if _is_rate_limit_error(e):
+                fetch_skipped_due_to_rate_limit = True
+                fetch_error = str(e)
+                totals["rate_limited_count"] += 1
+            else:
+                fetch_error = str(e)
+        except Exception as e:
+            fetch_error = str(e)
+
+        # 2) rebuild from DB always (even if fetch failed/limited)
+        try:
+            n_teams = rebuild_elo_from_matches(comp)
+        except Exception as e:
+            rebuild_error = str(e)
+
+        # 3) stats
+        try:
+            stats = db_stats(comp)
+        except Exception as e:
+            stats = {"error": str(e)}
+
+        ok = (rebuild_error is None)  # rebuild is the critical part
+        if not ok:
+            totals["failed_count"] += 1
+
+        totals["matches_upserted_total"] += int(inserted)
+
+        results.append(
+            {
+                "competition": comp,
+                "ok": ok,
+                "matches_upserted": inserted,
+                "fetch_skipped_due_to_rate_limit": fetch_skipped_due_to_rate_limit,
+                "fetch_error": fetch_error,
+                "teams_in_elo_table": n_teams,
+                "rebuild_error": rebuild_error,
+                "db_stats": stats,
+            }
+        )
+
+    return {"days_back": req.days_back, "competitions": competitions, "totals": totals, "results": results}
 
     
