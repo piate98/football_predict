@@ -5,6 +5,7 @@ from typing import Optional, List, Dict, Any
 import os
 
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .db import init_db, get_conn
@@ -24,6 +25,46 @@ from .poisson_model import (
 
 app = FastAPI(title="Football Prediction API", version="0.5.2")
 
+# ----------------------------
+# CORS (REQUIRED for browser fetch)
+# ----------------------------
+# This fixes:
+# - "CORS error" in Network tab
+# - "Failed to fetch" in the UI
+#
+# IMPORTANT:
+# - Put this right after FastAPI() creation (before routes)
+# - Add your Netlify production domain(s) when you have them
+#
+# Tip: if you don't know your final Netlify URL yet, deploy once,
+# then add it here and redeploy backend.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        # Local dev (Vite)
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+
+        # If you sometimes serve frontend on other dev ports
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+
+        # Backend itself (not necessary but harmless)
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+
+        # Render backend URL (not required as an origin usually,
+        # but harmless if you open frontend from there)
+        "https://football-predict-3bf4.onrender.com",
+
+       #Netlify site URL(s) here, examples:
+        "https://predict24.netlify.app/",
+        # "https://your-custom-domain.com",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 def _startup():
@@ -404,5 +445,3 @@ async def train_all(req: TrainAllRequest) -> Dict[str, Any]:
         )
 
     return {"days_back": req.days_back, "competitions": competitions, "totals": totals, "results": results}
-
-    

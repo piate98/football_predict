@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+import { getLeagues, getFixtures } from "./api";
 
 function isoDate(d) {
   const y = d.getFullYear();
@@ -128,9 +127,7 @@ export default function App() {
     let alive = true;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/leagues`);
-        if (!res.ok) throw new Error(`Leagues failed: ${res.status}`);
-        const data = await res.json();
+        const data = await getLeagues();
         const list = (data.leagues || []).filter((x) => x && x.code);
         if (!alive) return;
         setLeagues(list);
@@ -154,23 +151,11 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const qs = new URLSearchParams({
+      const arr = await getFixtures({
         competition: comp,
         date_from: df,
         date_to: dt
       });
-
-      const res = await fetch(`${API_BASE}/api/fixtures?${qs.toString()}`);
-      const text = await res.text();
-      if (!res.ok) {
-        let msg = `Fixtures failed: ${res.status}`;
-        try {
-          const j = JSON.parse(text);
-          msg = j.detail || msg;
-        } catch {}
-        throw new Error(msg);
-      }
-      const arr = JSON.parse(text);
       setFixtures(Array.isArray(arr) ? arr : []);
     } catch (e) {
       setError(String(e.message || e));
@@ -344,6 +329,7 @@ export default function App() {
         </div>
       </div>
 
+      {/* Mobile cards */}
       <div className="cardsOnly">
         {sorted.map((f) => (
           <FixtureCardSimple key={f.match_id} f={f} />
@@ -351,6 +337,7 @@ export default function App() {
         {!loading && sorted.length === 0 && <div className="emptyCard">No fixtures found for this range.</div>}
       </div>
 
+      {/* Desktop table */}
       <div className="tableCard tableOnly">
         <div className="tableWrap">
           <table>
@@ -411,3 +398,9 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
+
+
