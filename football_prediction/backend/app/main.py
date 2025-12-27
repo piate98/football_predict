@@ -58,7 +58,7 @@ app.add_middleware(
         "https://football-predict-3bf4.onrender.com",
 
        #Netlify site URL(s) here, examples:
-        "https://predict24.netlify.app/",
+        "https://predict24.netlify.app",
         # "https://your-custom-domain.com",
     ],
     allow_credentials=True,
