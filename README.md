@@ -54,8 +54,8 @@ Why Elo?
 Goals are modeled as rare events over fixed time → ideal for Poisson processes.
 
 For each match we estimate:
-# _home = expected home goals
-# λ_away = expected away goals
+* _home = expected home goals
+*λ_away = expected away goals
 
 From these lambdas we construct a joint score probability matrix:
 
