@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "https://football-predict-3bf4.onrender.com";
 
 async function handle(res) {
   const data = await res.json().catch(() => ({}));
@@ -26,3 +26,6 @@ export async function predictSimple(payload) {
   });
   return handle(res);
 }
+
+
+This is my api.jsx file 
